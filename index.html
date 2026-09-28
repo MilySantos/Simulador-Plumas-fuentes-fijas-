@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador de Morfología de Plumas Atmosféricas</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Three.js & OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.6); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        canvas { touch-action: none; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-sky-500 selection:text-white">
+
+    <header class="bg-slate-900/90 backdrop-blur-md border-b border-slate-800 sticky top-0 z-50 px-4 py-3 shadow-xl">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
+            <div class="flex items-center space-x-3">
+                <div class="p-2.5 bg-gradient-to-br from-sky-500/20 to-blue-600/20 border border-sky-500/40 rounded-xl text-sky-400">
+                    <i class="fa-solid fa-wind text-2xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-extrabold bg-gradient-to-r from-sky-400 via-indigo-300 to-cyan-300 bg-clip-text text-transparent">
+                        Simulador de Morfología de Plumas Atmosféricas
+                    </h1>
+                    <p class="text-xs text-slate-400">
+                        Dispersión y Estabilidad según Gradiente Térmico ($\text{ELR}$ vs $\text{DALR} = -9.8\text{ °C/km}$, $\text{SALR} \approx -6.0\text{ °C/km}$)
+                    </p>
+                </div>
+            </div>
+
+            <!-- Navigation Tabs -->
+            <div class="flex items-center space-x-1 bg-slate-950/80 p-1.5 rounded-xl border border-slate-800">
+                <button id="nav-sim" onclick="switchTab('sim')" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-sky-600 text-white shadow-md transition-all">
+                    <i class="fa-solid fa-sliders mr-1.5"></i>Simulador Interactivo
+                </button>
+                <button id="nav-theory" onclick="switchTab('theory')" class="px-3 py-1.5 text-xs font-semibold rounded-lg text-slate-400 hover:text-slate-200 transition-all">
+                    <i class="fa-solid fa-book-open mr-1.5"></i>Guía Didáctica
+                </button>
+                <button id="nav-embed" onclick="switchTab('embed')" class="px-3 py-1.5 text-xs font-semibold rounded-lg text-slate-400 hover:text-slate-200 transition-all">
+                    <i class="fa-solid fa-share-nodes mr-1.5"></i>Publicar / Canvas LMS
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 max-w-7xl w-full mx-auto p-3 md:p-6 space-y-6">
+
+        <!-- TAB 1: SIMULATOR -->
+        <div id="tab-sim-content" class="space-y-6">
+
+            <!-- Dynamic Banner -->
+            <div id="plume-banner" class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-4">
+                <div class="flex items-center space-x-4">
+                    <div id="banner-icon" class="w-14 h-14 rounded-2xl bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400 text-2xl shadow-inner">
+                        <i class="fa-solid fa-smog"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400">Tipo de Pluma Detectada:</span>
+                            <span id="tag-stability" class="px-2 py-0.5 text-[10px] rounded-md font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">Superadiabático</span>
+                            <span id="tag-pasquill" class="px-2 py-0.5 text-[10px] rounded-md font-bold bg-sky-500/20 text-sky-300 border border-sky-500/30">Pasquill-Gifford: A/B</span>
+                        </div>
+                        <h2 id="txt-plume-title" class="text-2xl font-extrabold text-white mt-1">Pluma Espiral / Serpenteante (Looping)</h2>
+                        <p id="txt-plume-desc" class="text-xs text-slate-300 max-w-2xl mt-1 leading-relaxed">
+                            Gradiente ambiental superadiabático. Fuertes térmicas ascendentes y descendentes hacen que la pluma serpentee tocando el suelo en bucles.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-2 w-full md:w-auto text-center border-t md:border-t-0 md:border-l border-slate-800 pt-3 md:pt-0 md:pl-6">
+                    <div class="bg-slate-950/60 p-2 rounded-xl border border-slate-800">
+                        <span class="text-[10px] text-slate-400 block font-medium">Gradiente ($\text{ELR}$)</span>
+                        <span id="val-elr-banner" class="text-sm font-extrabold text-amber-400">-15.0 °C/km</span>
+                    </div>
+                    <div class="bg-slate-950/60 p-2 rounded-xl border border-slate-800">
+                        <span class="text-[10px] text-slate-400 block font-medium">Grad. Seco ($\text{DALR}$)</span>
+                        <span class="text-sm font-extrabold text-sky-400">-9.8 °C/km</span>
+                    </div>
+                    <div class="bg-slate-950/60 p-2 rounded-xl border border-slate-800 col-span-2 md:col-span-1">
+                        <span class="text-[10px] text-slate-400 block font-medium">Grad. Húmedo ($\text{SALR}$)</span>
+                        <span class="text-sm font-extrabold text-indigo-300">-6.0 °C/km</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Layout: Controls vs Visualizers -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+                <!-- Left Sidebar: Controls (4 Cols) -->
+                <div class="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-5 shadow-xl custom-scrollbar max-h-[85vh] overflow-y-auto">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                        <h3 class="font-bold text-slate-200 text-sm flex items-center">
+                            <i class="fa-solid fa-sliders text-sky-400 mr-2"></i> Parámetros de Dispersión
+                        </h3>
+                        <button onclick="resetDefaults()" class="text-xs text-slate-400 hover:text-sky-400 transition-colors">
+                            <i class="fa-solid fa-rotate-left mr-1"></i>Restablecer
+                        </button>
+                    </div>
+
+                    <!-- 1. Gradient Control -->
+                    <div class="space-y-3">
+                        <label class="text-xs font-bold text-sky-400 uppercase tracking-wider block flex items-center">
+                            <i class="fa-solid fa-temperature-half mr-1.5"></i> 1. Gradiente Ambiental ($\text{ELR}$)
+                        </label>
+                        
+                        <div class="bg-slate-950 p-3 rounded-xl border border-sky-500/30 space-y-2">
+                            <div class="flex justify-between text-xs">
+                                <span class="text-slate-300 font-semibold">Tasa de Cambio ($dT/dz$):</span>
+                                <span id="lbl-elr" class="font-extrabold text-amber-400">-15.0 °C/km</span>
+                            </div>
+                            <input type="range" id="input-elr" min="-25.0" max="15.0" step="0.5" value="-15.0" class="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-500" oninput="updateSim()">
+                            <div class="flex justify-between text-[9px] font-mono text-slate-400 pt-1">
+                                <span>-25 (Inestable)</span>
+                                <span>-9.8 (DALR)</span>
+                                <span>+15 (Inversión)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2. Thermal Structure -->
+                    <div class="space-y-3 border-t border-slate-800 pt-4">
+                        <label class="text-xs font-bold text-indigo-400 uppercase tracking-wider block flex items-center">
+                            <i class="fa-solid fa-layer-group mr-1.5"></i> 2. Estructura de Inversión
+                        </label>
+
+                        <div class="space-y-2">
+                            <select id="input-structure" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-sky-500 font-medium" onchange="updateSim()">
+                                <option value="uniform" selected>Capa Homogénea Continua</option>
+                                <option value="surface_inv">Inversión Térmica en Superficie</option>
+                                <option value="elevated_inv">Inversión en Altura (Subsidencia)</option>
+                                <option value="trapping_layer">Doble Capa de Inversión (Atrapada)</option>
+                            </select>
+                        </div>
+
+                        <div id="container-inv-height" class="space-y-1.5 bg-slate-950 p-3 rounded-xl border border-slate-800 hidden">
+                            <div class="flex justify-between text-xs">
+                                <span class="text-slate-300">Altura Base de Inversión ($Z_{inv}$):</span>
+                                <span id="lbl-inv-h" class="font-bold text-amber-300">100 m</span>
+                            </div>
+                            <input type="range" id="input-inv-h" min="20" max="250" step="5" value="100" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500" oninput="updateSim()">
+                        </div>
+                    </div>
+
+                    <!-- 3. Physical Source & Wind -->
+                    <div class="space-y-3 border-t border-slate-800 pt-4">
+                        <label class="text-xs font-bold text-emerald-400 uppercase tracking-wider block flex items-center">
+                            <i class="fa-solid fa-industry mr-1.5"></i> 3. Chimenea y Viento
+                        </label>
+
+                        <div class="space-y-2">
+                            <div class="flex justify-between text-xs">
+                                <span class="text-slate-300">Altura Chimenea ($h_s$):</span>
+                                <span id="lbl-stack-h" class="font-bold text-emerald-400">60 m</span>
+                            </div>
+                            <input type="range" id="input-stack-h" min="15" max="180" step="5" value="60" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500" oninput="updateSim()">
+                        </div>
+
+                        <div class="space-y-2">
+                            <div class="flex justify-between text-xs">
+                                <span class="text-slate-300">Velocidad del Viento ($u$):</span>
+                                <span id="lbl-wind" class="font-bold text-cyan-400">3.5 m/s</span>
+                            </div>
+                            <input type="range" id="input-wind" min="0.5" max="15" step="0.5" value="3.5" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500" oninput="updateSim()">
+                        </div>
+                    </div>
+
+                    <!-- 4. Quick Presets -->
+                    <div class="space-y-2 border-t border-slate-800 pt-4">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Escenarios Preconfigurados Rápida Carga:</span>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button onclick="loadScenario('looping')" class="p-2 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-[11px] text-amber-300 text-left font-medium transition-all">
+                                <i class="fa-solid fa-sun mr-1"></i>Mediodía Radiante
+                            </button>
+                            <button onclick="loadScenario('coning')" class="p-2 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-[11px] text-sky-300 text-left font-medium transition-all">
+                                <i class="fa-solid fa-cloud-sun mr-1"></i>Día Nublado Neutro
+                            </button>
+                            <button onclick="loadScenario('fanning')" class="p-2 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-[11px] text-cyan-300 text-left font-medium transition-all">
+                                <i class="fa-solid fa-moon mr-1"></i>Noche Estable
+                            </button>
+                            <button onclick="loadScenario('fumigation')" class="p-2 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-[11px] text-rose-300 text-left font-medium transition-all">
+                                <i class="fa-solid fa-smog mr-1"></i>Fumigación Matutina
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Right Area: Visualizer & Charts (8 Cols) -->
+                <div class="lg:col-span-8 space-y-6">
+
+                    <!-- Viewport Header -->
+                    <div class="bg-slate-900 border border-slate-800 p-2.5 rounded-2xl flex flex-wrap items-center justify-between gap-2 shadow-xl">
+                        <div class="flex items-center space-x-1">
+                            <button id="btn-mode-3d" onclick="setVisualMode('3d')" class="px-3 py-1.5 text-xs font-bold rounded-xl bg-sky-600 text-white shadow">
+                                <i class="fa-solid fa-cube mr-1"></i>3D Dinámico
+                            </button>
+                            <button id="btn-mode-side" onclick="setVisualMode('side')" class="px-3 py-1.5 text-xs font-bold rounded-xl bg-slate-950 text-slate-300 hover:bg-slate-800">
+                                <i class="fa-solid fa-vector-square mr-1"></i>Perfil X-Z
+                            </button>
+                            <button id="btn-mode-top" onclick="setVisualMode('top')" class="px-3 py-1.5 text-xs font-bold rounded-xl bg-slate-950 text-slate-300 hover:bg-slate-800">
+                                <i class="fa-solid fa-map mr-1"></i>Planta X-Y
+                            </button>
+                        </div>
+
+                        <div class="flex items-center space-x-3">
+                            <button id="btn-pause" onclick="togglePause()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-xl border border-slate-700 transition-colors">
+                                <i id="icon-pause" class="fa-solid fa-pause mr-1"></i>Pausar
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 3D Canvas Viewport -->
+                    <div id="view-3d-box" class="relative bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl h-[400px] w-full">
+                        <div id="three-holder" class="w-full h-full"></div>
+                        <div class="absolute bottom-3 left-3 bg-slate-950/80 backdrop-blur border border-slate-800 px-3 py-2 rounded-xl text-[10px] text-slate-300 space-y-1 pointer-events-none">
+                            <div class="font-bold text-white">Visualizador 3D Interactivo</div>
+                            <div class="text-slate-400">Clic izquierdo + Arrastrar para rotar cámara</div>
+                        </div>
+                    </div>
+
+                    <!-- 2D Canvas Side View -->
+                    <div id="view-side-box" class="hidden bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-2xl h-[400px] w-full flex flex-col">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs font-bold text-slate-200">Perfil Transversal Vertical ($x-z$)</span>
+                            <span class="text-[10px] text-slate-400">Escala $x$: 0-5 km | $z$: 0-300 m</span>
+                        </div>
+                        <canvas id="canvas-side" class="w-full h-full rounded-xl bg-slate-950"></canvas>
+                    </div>
+
+                    <!-- 2D Canvas Top View -->
+                    <div id="view-top-box" class="hidden bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-2xl h-[400px] w-full flex flex-col">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs font-bold text-slate-200">Vista Superior / Planta ($x-y$)</span>
+                            <span class="text-[10px] text-slate-400">Expansión Lateral Horizontal</span>
+                        </div>
+                        <canvas id="canvas-top" class="w-full h-full rounded-xl bg-slate-950"></canvas>
+                    </div>
+
+                    <!-- Graphs Row -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                        <!-- Chart 1: Temperature Profile -->
+                        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-2">
+                            <div class="flex items-center justify-between">
+                                <h4 class="text-xs font-bold text-slate-200">Perfil Térmico Vertical ($T$ vs $Z$)</h4>
+                                <span class="text-[9px] font-mono text-slate-400">ELR vs DALR (-9.8) / SALR (-6.0)</span>
+                            </div>
+                            <div class="h-44 w-full">
+                                <canvas id="chart-temp-ref"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Chart 2: Ground Concentration -->
+                        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-2">
+                            <div class="flex items-center justify-between">
+                                <h4 class="text-xs font-bold text-slate-200">Impacto de Contaminación en Suelo ($z=0$)</h4>
+                                <span class="text-[9px] font-mono text-slate-400">Concentración Relativa ($C$)</span>
+                            </div>
+                            <div class="h-44 w-full">
+                                <canvas id="chart-ground-ref"></canvas>
+                            </div>
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+        </div>
+
+        <!-- TAB 2: THEORY GUIDE -->
+        <div id="tab-theory-content" class="hidden space-y-6">
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
+                <div>
+                    <h2 class="text-xl font-bold text-white flex items-center">
+                        <i class="fa-solid fa-book-open text-sky-400 mr-2.5"></i> Clasificación Térmica de Plumas Atmosféricas
+                    </h2>
+                    <p class="text-xs text-slate-400 mt-1">
+                        Resumen conceptual del comportamiento de la emisión en función del gradiente térmico ambiental ($\text{ELR} = dT/dz$) respecto al Gradiente Adiabático Seco ($\text{DALR} = -9.8\text{ °C/km}$).
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div class="bg-slate-950 border border-amber-500/30 p-4 rounded-xl space-y-2">
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold text-amber-400 text-sm">1. Espiral (Looping)</span>
+                            <span class="text-[9px] font-mono bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded">&lt; -10.0 °C/km</span>
+                        </div>
+                        <p class="text-xs text-slate-300"><strong>Estabilidad:</strong> Superadiabático (Inestable, A-B).</p>
+                        <p class="text-xs text-slate-400 leading-relaxed">Grandes bolsas térmicas ascendentes y descendentes generan rizos caóticos. Toca el suelo cerca de la chimenea.</p>
+                    </div>
+
+                    <div class="bg-slate-950 border border-sky-500/30 p-4 rounded-xl space-y-2">
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold text-sky-400 text-sm">2. Cónica (Coning)</span>
+                            <span class="text-[9px] font-mono bg-sky-500/20 text-sky-300 px-2 py-0.5 rounded">≈ -9.8 °C/km</span>
+                        </div>
+                        <p class="text-xs text-slate-300"><strong>Estabilidad:</strong> Adiabático Neutro (Clase C-D).</p>
+                        <p class="text-xs text-slate-400 leading-relaxed">Dispersión simétrica y equilibrada vertical y horizontalmente. Típico en días nublados o vientos fuertes.</p>
+                    </div>
+
+                    <div class="bg-slate-950 border border-cyan-500/30 p-4 rounded-xl space-y-2">
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold text-cyan-400 text-sm">3. Abanico (Fanning)</span>
+                            <span class="text-[9px] font-mono bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded">&gt; 0.0 °C/km</span>
+                        </div>
+                        <p class="text-xs text-slate-300"><strong>Estabilidad:</strong> Inversión Térmica (Estable, E-F).</p>
+                        <p class="text-xs text-slate-400 leading-relaxed">La turbulencia vertical se anula. La pluma se extiende horizontalmente como una cinta delgada sin tocar el suelo.</p>
+                    </div>
+
+                    <div class="bg-slate-950 border border-rose-500/30 p-4 rounded-xl space-y-2">
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold text-rose-400 text-sm">4. Fumigación (Fumigation)</span>
+                            <span class="text-[9px] font-mono bg-rose-500/20 text-rose-300 px-2 py-0.5 rounded">Inversión Arriba</span>
+                        </div>
+                        <p class="text-xs text-slate-300"><strong>Estabilidad:</strong> Inversión en Cima + Capa Mezclada Abajo.</p>
+                        <p class="text-xs text-slate-400 leading-relaxed">Escenario crítico. La inversión en altura impide que el contaminante suba, forzando la mezcla completa hacia el suelo.</p>
+                    </div>
+
+                    <div class="bg-slate-950 border border-emerald-500/30 p-4 rounded-xl space-y-2">
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold text-emerald-400 text-sm">5. Ascendente (Lofting)</span>
+                            <span class="text-[9px] font-mono bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded">Inversión Abajo</span>
+                        </div>
+                        <p class="text-xs text-slate-300"><strong>Estabilidad:</strong> Inversión en Superficie bajo la chimenea.</p>
+                        <p class="text-xs text-slate-400 leading-relaxed">Condición ideal de dispersión: La capa inferior bloquea el contacto con el suelo mientras la pluma asciende libremente.</p>
+                    </div>
+
+                    <div class="bg-slate-950 border border-purple-500/30 p-4 rounded-xl space-y-2">
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold text-purple-400 text-sm">6. Atrapada (Trapping)</span>
+                            <span class="text-[9px] font-mono bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded">Entre Inversiones</span>
+                        </div>
+                        <p class="text-xs text-slate-300"><strong>Estabilidad:</strong> Canal Confinado.</p>
+                        <p class="text-xs text-slate-400 leading-relaxed">La emisión ocurre entre dos capas de inversión, quedando el flujo atrapado y rebotando en un espacio reducido.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: EMBED & CANVAS LMS GUIDE -->
+        <div id="tab-embed-content" class="hidden space-y-6">
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6">
+                <div>
+                    <h2 class="text-xl font-bold text-white flex items-center">
+                        <i class="fa-solid fa-share-nodes text-sky-400 mr-2.5"></i> Integración Pública e Incrustación en Canvas LMS
+                    </h2>
+                    <p class="text-xs text-slate-400 mt-1">
+                        Sigue estos simples pasos para compartir este simulador de forma abierta con tus alumnos o incrustarlo dentro de una lección de Canvas.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- GitHub Pages -->
+                    <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+                        <h3 class="font-bold text-slate-200 text-sm flex items-center">
+                            <i class="fa-brands fa-github text-lg mr-2 text-sky-400"></i> Opción A: Publicar en GitHub Pages (Gratis)
+                        </h3>
+                        <ol class="text-xs text-slate-400 space-y-1.5 list-decimal pl-4">
+                            <li>Guarda este código como un archivo llamado <code class="text-sky-300 font-mono">index.html</code>.</li>
+                            <li>Súbelo a un repositorio público en GitHub.</li>
+                            <li>Activa <strong>Settings &gt; Pages</strong> en la rama <code class="text-sky-300 font-mono">main</code>.</li>
+                            <li>Obtendrás una URL pública HTTPS para compartir universalmente.</li>
+                        </ol>
+                    </div>
+
+                    <!-- Canvas Embed -->
+                    <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+                        <h3 class="font-bold text-slate-200 text-sm flex items-center">
+                            <i class="fa-solid fa-graduation-cap text-lg mr-2 text-emerald-400"></i> Opción B: Incrustar en Canvas LMS
+                        </h3>
+                        <p class="text-xs text-slate-400">Abre el Editor HTML (<code class="text-sky-300 font-mono">&lt;/&gt;</code>) en Canvas y pega este iFrame:</p>
+                        <pre class="bg-slate-900 p-3 rounded-lg text-[10px] text-slate-300 font-mono overflow-x-auto border border-slate-800"><code>&lt;iframe src="URL_PUBLICA_DEL_SIMULADOR" width="100%" height="750px" style="border:none; border-radius:12px;" allow="fullscreen"&gt;&lt;/iframe&gt;</code></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        /* ====================================================================
+           ATMOSPHERIC PLUME SIMULATOR ENGINE - JAVASCRIPT
+           ==================================================================== */
+
+        const simState = {
+            elr: -15.0,           // °C / km
+            structure: 'uniform', // 'uniform', 'surface_inv', 'elevated_inv', 'trapping_layer'
+            invHeight: 100,       // meters
+            stackHeight: 60,      // meters
+            windSpeed: 3.5,       // m/s
+            viewMode: '3d',       // '3d', 'side', 'top'
+            paused: false,
+            timeAcc: 0
+        };
+
+        // References for Charts & 3D
+        let chartTemp, chartGround;
+        let scene, camera, renderer, controls;
+        let stackMesh, inversionPlaneMesh, particleSystem;
+
+        window.addEventListener('DOMContentLoaded', () => {
+            initCharts();
+            init3DEngine();
+            updateSim();
+            window.addEventListener('resize', handleResize);
+        });
+
+        // Tab Navigation
+        function switchTab(tabKey) {
+            ['sim', 'theory', 'embed'].forEach(key => {
+                document.getElementById(`tab-${key}-content`).classList.add('hidden');
+                document.getElementById(`nav-${key}`).className = 'px-3 py-1.5 text-xs font-semibold rounded-lg text-slate-400 hover:text-slate-200 transition-all';
+            });
+
+            document.getElementById(`tab-${tabKey}-content`).classList.remove('hidden');
+            document.getElementById(`nav-${tabKey}`).className = 'px-3 py-1.5 text-xs font-semibold rounded-lg bg-sky-600 text-white shadow-md transition-all';
+
+            if (tabKey === 'sim') {
+                setTimeout(() => { handleResize(); updateSim(); }, 50);
+            }
+        }
+
+        // View Mode Toggle
+        function setVisualMode(mode) {
+            simState.viewMode = mode;
+            ['3d', 'side', 'top'].forEach(m => {
+                document.getElementById(`view-${m}-box`).classList.add('hidden');
+                document.getElementById(`btn-mode-${m}`).className = 'px-3 py-1.5 text-xs font-bold rounded-xl bg-slate-950 text-slate-300 hover:bg-slate-800';
+            });
+
+            document.getElementById(`view-${mode}-box`).classList.remove('hidden');
+            document.getElementById(`btn-mode-${mode}`).className = 'px-3 py-1.5 text-xs font-bold rounded-xl bg-sky-600 text-white shadow';
+
+            updateSim();
+        }
+
+        function resetDefaults() {
+            document.getElementById('input-elr').value = -15.0;
+            document.getElementById('input-structure').value = 'uniform';
+            document.getElementById('input-inv-h').value = 100;
+            document.getElementById('input-stack-h').value = 60;
+            document.getElementById('input-wind').value = 3.5;
+            updateSim();
+        }
+
+        function loadScenario(type) {
+            if (type === 'looping') {
+                document.getElementById('input-elr').value = -18.0;
+                document.getElementById('input-structure').value = 'uniform';
+            } else if (type === 'coning') {
+                document.getElementById('input-elr').value = -9.8;
+                document.getElementById('input-structure').value = 'uniform';
+            } else if (type === 'fanning') {
+                document.getElementById('input-elr').value = 6.0;
+                document.getElementById('input-structure').value = 'uniform';
+            } else if (type === 'fumigation') {
+                document.getElementById('input-elr').value = -12.0;
+                document.getElementById('input-structure').value = 'elevated_inv';
+                document.getElementById('input-inv-h').value = 90;
+                document.getElementById('input-stack-h').value = 50;
+            }
+            updateSim();
+        }
+
+        // Plume Classification Algorithm
+        function classifyPlume() {
+            const elr = simState.elr;
+            const dalr = -9.8;
+
+            let key = "looping";
+            let name = "";
+            let desc = "";
+            let tagColor = "bg-amber-500/20 text-amber-300 border-amber-500/30";
+            let pasquill = "Pasquill A-B (Inestable)";
+
+            if (simState.structure === 'surface_inv') {
+                if (simState.stackHeight > simState.invHeight) {
+                    key = "lofting";
+                    name = "Pluma Ascendente (Lofting)";
+                    desc = "La chimenea penetra la capa de inversión térmica en superficie. La inversión impide que el contaminante descienda, permitiendo ascenso vertical.";
+                    tagColor = "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
+                    pasquill = "Superficie Estable / Mezcla Superior";
+                } else {
+                    key = "fanning";
+                    name = "Pluma en Abanico (Fanning)";
+                    desc = "La chimenea está inmersa en la inversión térmica superficial. Turbulencia vertical suprimida; se dispersa como cinta horizontal.";
+                    tagColor = "bg-cyan-500/20 text-cyan-300 border-cyan-500/30";
+                    pasquill = "Pasquill E-F (Muy Estable)";
+                }
+            } else if (simState.structure === 'elevated_inv') {
+                if (simState.stackHeight < simState.invHeight) {
+                    key = "fumigation";
+                    name = "Pluma en Fumigación (Fumigation)";
+                    desc = "CRÍTICO: Inversión en altura tapa el ascenso, mientras la capa inferior inestable fuerza la mezcla completa del contaminante hacia el suelo.";
+                    tagColor = "bg-rose-500/20 text-rose-300 border-rose-500/30";
+                    pasquill = "Inversión Superior (Tapa)";
+                } else {
+                    key = "fanning";
+                    name = "Pluma Atrapada Superior";
+                    desc = "La emisión ocurre dentro de la capa superior estable.";
+                    tagColor = "bg-purple-500/20 text-purple-300 border-purple-500/30";
+                    pasquill = "Pasquill E (Estable)";
+                }
+            } else if (simState.structure === 'trapping_layer') {
+                key = "trapping";
+                name = "Pluma Atrapada (Trapping)";
+                desc = "La emisión queda confinada entre dos capas estables, rebotando repetidamente sin poder escapar verticalmente.";
+                tagColor = "bg-purple-500/20 text-purple-300 border-purple-500/30";
+                pasquill = "Canal Confinado";
+            } else {
+                // Uniform
+                if (elr < dalr - 1.0) {
+                    key = "looping";
+                    name = "Pluma Espiral / Serpenteante (Looping)";
+                    desc = "Gradiente superadiabático (< -9.8 °C/km). Intensa convección térmica genera grandes ondas que tocan el suelo cerca de la fuente.";
+                    tagColor = "bg-amber-500/20 text-amber-300 border-amber-500/30";
+                    pasquill = "Pasquill A (Muy Inestable)";
+                } else if (Math.abs(elr - dalr) <= 1.5) {
+                    key = "coning";
+                    name = "Pluma Cónica (Coning)";
+                    desc = "Gradiente neutro adiabático (≈ -9.8 °C/km). Expansión simétrica cónica motivada por velocidad de viento y turbulencia mecánica.";
+                    tagColor = "bg-sky-500/20 text-sky-300 border-sky-500/30";
+                    pasquill = "Pasquill C-D (Neutro)";
+                } else if (elr > dalr + 1.5 && elr < 0) {
+                    key = "coning";
+                    name = "Pluma Cónica Ligeramente Estable";
+                    desc = "Gradiente subadiabático débil. Cono comprimido en la dimensión vertical.";
+                    tagColor = "bg-indigo-500/20 text-indigo-300 border-indigo-500/30";
+                    pasquill = "Pasquill D-E";
+                } else {
+                    key = "fanning";
+                    name = "Pluma en Abanico (Fanning)";
+                    desc = "Inversión térmica (ELR > 0 °C/km). Flujo estratificado sin dispersión vertical.";
+                    tagColor = "bg-cyan-500/20 text-cyan-300 border-cyan-500/30";
+                    pasquill = "Pasquill F (Inversión)";
+                }
+            }
+
+            return { key, name, desc, tagColor, pasquill };
+        }
+
+        function updateSim() {
+            simState.elr = parseFloat(document.getElementById('input-elr').value);
+            simState.structure = document.getElementById('input-structure').value;
+            simState.invHeight = parseFloat(document.getElementById('input-inv-h').value);
+            simState.stackHeight = parseFloat(document.getElementById('input-stack-h').value);
+            simState.windSpeed = parseFloat(document.getElementById('input-wind').value);
+
+            // Update Labels
+            document.getElementById('lbl-elr').innerText = `${simState.elr > 0 ? '+' : ''}${simState.elr.toFixed(1)} °C/km`;
+            document.getElementById('lbl-inv-h').innerText = `${simState.invHeight} m`;
+            document.getElementById('lbl-stack-h').innerText = `${simState.stackHeight} m`;
+            document.getElementById('lbl-wind').innerText = `${simState.windSpeed.toFixed(1)} m/s`;
+            document.getElementById('val-elr-banner').innerText = `${simState.elr > 0 ? '+' : ''}${simState.elr.toFixed(1)} °C/km`;
+
+            const invContainer = document.getElementById('container-inv-height');
+            invContainer.className = simState.structure !== 'uniform' ? 'space-y-1.5 bg-slate-950 p-3 rounded-xl border border-slate-800' : 'hidden';
+
+            const classification = classifyPlume();
+            document.getElementById('txt-plume-title').innerText = classification.name;
+            document.getElementById('txt-plume-desc').innerText = classification.desc;
+            document.getElementById('tag-stability').innerText = classification.name.split(' ')[0];
+            document.getElementById('tag-stability').className = `px-2 py-0.5 text-[10px] rounded-md font-bold border ${classification.tagColor}`;
+            document.getElementById('tag-pasquill').innerText = classification.pasquill;
+
+            updateCharts(classification.key);
+
+            if (simState.viewMode === '3d') update3DScene(classification.key);
+            else if (simState.viewMode === 'side') draw2DSide(classification.key);
+            else if (simState.viewMode === 'top') draw2DTop(classification.key);
+        }
+
+        function updateCharts(typeKey) {
+            // Chart 1: Temperature Profile
+            const zLabels = [];
+            const elrData = [];
+            const dalrData = [];
+            const salrData = [];
+
+            const tSurface = 20.0;
+            const dalrRate = -0.0098; // °C/m
+            const salrRate = -0.0060; // °C/m
+            const elrRate = simState.elr / 1000.0; // °C/m
+
+            for (let z = 0; z <= 300; z += 15) {
+                zLabels.push(`${z}m`);
+                dalrData.push((tSurface + dalrRate * z).toFixed(1));
+                salrData.push((tSurface + salrRate * z).toFixed(1));
+
+                let tEnv = tSurface;
+                if (simState.structure === 'surface_inv') {
+                    if (z <= simState.invHeight) tEnv = tSurface + 0.015 * z;
+                    else tEnv = (tSurface + 0.015 * simState.invHeight) + elrRate * (z - simState.invHeight);
+                } else if (simState.structure === 'elevated_inv') {
+                    if (z < simState.invHeight) tEnv = tSurface + elrRate * z;
+                    else if (z >= simState.invHeight && z <= simState.invHeight + 50) {
+                        tEnv = (tSurface + elrRate * simState.invHeight) + 0.02 * (z - simState.invHeight);
+                    } else {
+                        const tTop = (tSurface + elrRate * simState.invHeight) + 0.02 * 50;
+                        tEnv = tTop + elrRate * (z - (simState.invHeight + 50));
+                    }
+                } else {
+                    tEnv = tSurface + elrRate * z;
+                }
+                elrData.push(tEnv.toFixed(1));
+            }
+
+            if (chartTemp) {
+                chartTemp.data.labels = zLabels;
+                chartTemp.data.datasets[0].data = elrData;
+                chartTemp.data.datasets[1].data = dalrData;
+                chartTemp.data.datasets[2].data = salrData;
+                chartTemp.update();
+            }
+
+            // Chart 2: Ground Impact
+            const xLabels = [];
+            const cData = [];
+            for (let x = 0.1; x <= 5.0; x += 0.2) {
+                xLabels.push(`${x.toFixed(1)}km`);
+                let conc = 0;
+                if (typeKey === 'fumigation') conc = Math.max(0, 180 * Math.exp(-0.8 * (x - 1.0) * (x - 1.0)));
+                else if (typeKey === 'looping') conc = Math.max(0, 130 * Math.exp(-1.5 * (x - 0.6) * (x - 0.6)));
+                else if (typeKey === 'coning') conc = Math.max(0, 85 * (x / 1.5) * Math.exp(-0.8 * (x - 1.2)));
+                else conc = 1.0;
+                cData.push(conc.toFixed(1));
+            }
+
+            if (chartGround) {
+                chartGround.data.labels = xLabels;
+                chartGround.data.datasets[0].data = cData;
+                chartGround.update();
+            }
+        }
+
+        function initCharts() {
+            const ctxT = document.getElementById('chart-temp-ref').getContext('2d');
+            chartTemp = new Chart(ctxT, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        { label: 'Ambiental (ELR)', data: [], borderColor: '#f59e0b', borderWidth: 2.5, tension: 0.2, pointRadius: 0 },
+                        { label: 'Adiab. Seco (DALR = -9.8 °C/km)', data: [], borderColor: '#38bdf8', borderWidth: 1.5, borderDash: [4, 4], pointRadius: 0 },
+                        { label: 'Adiab. Húmedo (SALR ≈ -6.0 °C/km)', data: [], borderColor: '#a5b4fc', borderWidth: 1.5, borderDash: [2, 2], pointRadius: 0 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { labels: { color: '#cbd5e1', font: { size: 9 } } } },
+                    scales: {
+                        x: { grid: { color: '#1e293b' }, ticks: { color: '#94a3b8', font: { size: 8 } } },
+                        y: { grid: { color: '#1e293b' }, ticks: { color: '#94a3b8', font: { size: 8 } } }
+                    }
+                }
+            });
+
+            const ctxG = document.getElementById('chart-ground-ref').getContext('2d');
+            chartGround = new Chart(ctxG, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{ label: 'Concentración Suelo', data: [], borderColor: '#f43f5e', backgroundColor: 'rgba(244,63,94,0.15)', fill: true, tension: 0.4, pointRadius: 0 }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { color: '#1e293b' }, ticks: { color: '#94a3b8', font: { size: 8 } } },
+                        y: { grid: { color: '#1e293b' }, ticks: { color: '#94a3b8', font: { size: 8 } } }
+                    }
+                }
+            });
+        }
+
+        // Three.js Engine Setup
+        function init3DEngine() {
+            const holder = document.getElementById('three-holder');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x090d16);
+
+            camera = new THREE.PerspectiveCamera(45, holder.clientWidth / holder.clientHeight, 1, 2000);
+            camera.position.set(-220, 110, 220);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(holder.clientWidth, holder.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            holder.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+
+            const grid = new THREE.GridHelper(600, 30, 0x0284c7, 0x1e293b);
+            scene.add(grid);
+
+            // Stack Mesh
+            const stackGeo = new THREE.CylinderGeometry(2, 3, 60, 16);
+            const stackMat = new THREE.MeshStandardMaterial({ color: 0x64748b });
+            stackMesh = new THREE.Mesh(stackGeo, stackMat);
+            stackMesh.position.y = 30;
+            scene.add(stackMesh);
+
+            // Inversion Plane
+            const invGeo = new THREE.PlaneGeometry(600, 600);
+            const invMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.15, side: THREE.DoubleSide });
+            inversionPlaneMesh = new THREE.Mesh(invGeo, invMat);
+            inversionPlaneMesh.rotation.x = Math.PI / 2;
+            scene.add(inversionPlaneMesh);
+
+            // Light
+            const light = new THREE.DirectionalLight(0xffffff, 1);
+            light.position.set(100, 200, 100);
+            scene.add(light);
+            scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+
+            // Particles
+            const count = 2500;
+            const pGeo = new THREE.BufferGeometry();
+            const pos = new Float32Array(count * 3);
+            const col = new Float32Array(count * 3);
+
+            pGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            pGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+
+            const pMat = new THREE.PointsMaterial({ size: 3.5, vertexColors: true, transparent: true, opacity: 0.8 });
+            particleSystem = new THREE.Points(pGeo, pMat);
+            scene.add(particleSystem);
+
+            function loop3D() {
+                requestAnimationFrame(loop3D);
+                controls.update();
+
+                if (!simState.paused) {
+                    simState.timeAcc += 0.03;
+                    const c = classifyPlume();
+                    animateParticles(c.key);
+                }
+
+                renderer.render(scene, camera);
+            }
+            loop3D();
+        }
+
+        function update3DScene(typeKey) {
+            stackMesh.scale.set(1, simState.stackHeight / 60, 1);
+            stackMesh.position.y = simState.stackHeight / 2;
+
+            if (simState.structure !== 'uniform') {
+                inversionPlaneMesh.visible = true;
+                inversionPlaneMesh.position.y = simState.invHeight;
+            } else {
+                inversionPlaneMesh.visible = false;
+            }
+        }
+
+        function animateParticles(typeKey) {
+            const pos = particleSystem.geometry.attributes.position.array;
+            const col = particleSystem.geometry.attributes.color.array;
+            const count = pos.length / 3;
+            const t = simState.timeAcc;
+            const hs = simState.stackHeight;
+
+            for (let i = 0; i < count; i++) {
+                const frac = i / count;
+                const x = frac * 320;
+                let y = hs;
+                let z = (Math.sin(i * 11.1) * 0.5) * (x * 0.1);
+
+                if (typeKey === "looping") {
+                    y = hs + Math.sin(x * 0.04 - t * 2.5 + i * 0.1) * (x * 0.35);
+                    if (y < 2) y = 2;
+                } else if (typeKey === "coning") {
+                    y = hs + (Math.sin(i * 7.7) * x * 0.12);
+                    z = (Math.cos(i * 3.3) * x * 0.12);
+                } else if (typeKey === "fanning") {
+                    y = hs + (Math.sin(i * 4.1) * x * 0.01);
+                    z = (Math.cos(i * 8.2) * x * 0.25);
+                } else if (typeKey === "fumigation") {
+                    y = hs - (frac * 0.3 * hs) + (Math.sin(i * 3.3 + t) * x * 0.1);
+                    if (y > simState.invHeight) y = simState.invHeight - 2;
+                    if (y < 1) y = 1;
+                }
+
+                pos[i * 3] = x;
+                pos[i * 3 + 1] = y;
+                pos[i * 3 + 2] = z;
+
+                col[i * 3] = 0.2; col[i * 3 + 1] = 0.6; col[i * 3 + 2] = 0.9;
+            }
+
+            particleSystem.geometry.attributes.position.needsUpdate = true;
+            particleSystem.geometry.attributes.color.needsUpdate = true;
+        }
+
+        function draw2DSide(typeKey) {
+            const canvas = document.getElementById('canvas-side');
+            const ctx = canvas.getContext('2d');
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+
+            const w = canvas.width;
+            const h = canvas.height;
+
+            ctx.clearRect(0, 0, w, h);
+            ctx.fillStyle = '#090d16';
+            ctx.fillRect(0, 0, w, h);
+
+            // Ground
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(0, h - 25, w, 25);
+
+            const mapX = (xKm) => (xKm / 5.0) * (w - 60) + 50;
+            const mapZ = (zM) => (h - 25) - (zM / 250.0) * (h - 25);
+
+            // Stack
+            ctx.fillStyle = '#64748b';
+            ctx.fillRect(mapX(0) - 3, mapZ(simState.stackHeight), 6, (h - 25) - mapZ(simState.stackHeight));
+
+            // Envelope
+            ctx.beginPath();
+            ctx.moveTo(mapX(0), mapZ(simState.stackHeight));
+            ctx.lineTo(w - 20, mapZ(simState.stackHeight + 30));
+            ctx.lineTo(w - 20, mapZ(Math.max(0, simState.stackHeight - 30)));
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(14, 165, 233, 0.3)';
+            ctx.fill();
+        }
+
+        function draw2DTop(typeKey) {
+            const canvas = document.getElementById('canvas-top');
+            const ctx = canvas.getContext('2d');
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+
+            const w = canvas.width;
+            const h = canvas.height;
+
+            ctx.clearRect(0, 0, w, h);
+            ctx.fillStyle = '#090d16';
+            ctx.fillRect(0, 0, w, h);
+
+            const cy = h / 2;
+            ctx.fillStyle = '#10b981';
+            ctx.beginPath();
+            ctx.arc(50, cy, 6, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(50, cy);
+            ctx.lineTo(w - 30, cy - 40);
+            ctx.lineTo(w - 30, cy + 40);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(56, 189, 248, 0.3)';
+            ctx.fill();
+        }
+
+        function togglePause() {
+            simState.paused = !simState.paused;
+            document.getElementById('icon-pause').className = simState.paused ? "fa-solid fa-play mr-1" : "fa-solid fa-pause mr-1";
+            document.getElementById('btn-pause').innerText = simState.paused ? "Reanudar" : "Pausar";
+        }
+
+        function handleResize() {
+            if (renderer && camera) {
+                const holder = document.getElementById('three-holder');
+                if (holder) {
+                    camera.aspect = holder.clientWidth / holder.clientHeight;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(holder.clientWidth, holder.clientHeight);
+                }
+            }
+        }
+    </script>
+</body>
+</html>
